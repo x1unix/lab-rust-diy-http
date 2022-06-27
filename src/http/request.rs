@@ -56,15 +56,15 @@ impl Display for Method {
     }
 }
 
-pub struct Request<'buff> {
-    pub path: &'buff str,
+pub struct Request<'buf> {
+    pub path: &'buf str,
     pub method: Method,
-    pub query_string: Option<&'buff str>,
+    pub query_string: Option<&'buf str>,
 }
 
-impl<'buff> TryFrom<&'buff [u8]> for Request<'buff> {
+impl<'buf> TryFrom<&'buf [u8]> for Request<'buf> {
     type Error = ParseError;
-    fn try_from(buff: &'buff [u8]) -> Result<Self, Self::Error> {
+    fn try_from(buff: &'buf [u8]) -> Result<Self, Self::Error> {
         let req_str = std::str::from_utf8(buff)?;
         let (method, req_str) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
         let (mut path, req_str) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
