@@ -1,7 +1,7 @@
 use crate::http::Request;
 use std::{
     io::{Read, Write},
-    net::{Shutdown, TcpListener},
+    net::{Shutdown, TcpListener, SocketAddr},
 };
 
 pub struct Server {
@@ -23,12 +23,7 @@ impl Server {
                     match stream.read(&mut buffer) {
                         Ok(_) => match Request::try_from(&buffer[..]) {
                             Ok(req) => {
-                                println!(
-                                    "[{addr}] {} {} {}",
-                                    req.method,
-                                    req.path,
-                                    req.query_string.unwrap_or("")
-                                );
+                                Self::log_request(&req, &addr);
                                 write!(stream, "{} {} from {addr}", req.method, req.path).unwrap();
                             }
                             Err(err) => {
@@ -47,5 +42,20 @@ impl Server {
                 }
             }
         }
+    }
+
+    fn log_request(req: &Request, addr: &SocketAddr) {
+        let query_params = match &req.query_string {
+            Some(str) => str.to_string(),
+            None => String::new()
+        };
+
+        println!(
+            "[{}] {} {}{}",
+            addr,
+            req.method,
+            req.path,
+            &query_params,
+        );
     }
 }

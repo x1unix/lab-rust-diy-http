@@ -2,6 +2,7 @@ use std::convert::{From, TryFrom};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str::FromStr;
+use super::query_string::QueryString;
 
 pub enum Method {
     GET,
@@ -59,7 +60,7 @@ impl Display for Method {
 pub struct Request<'buf> {
     pub path: &'buf str,
     pub method: Method,
-    pub query_string: Option<&'buf str>,
+    pub query_string: Option<QueryString<'buf>>,
 }
 
 impl<'buf> TryFrom<&'buf [u8]> for Request<'buf> {
@@ -77,7 +78,7 @@ impl<'buf> TryFrom<&'buf [u8]> for Request<'buf> {
         let mut query_string = None;
         let method: Method = method.parse()?;
         if let Some(i) = path.find('?') {
-            query_string = Some(&path[i + 1..]);
+            query_string = Some(QueryString::from(&path[i + 1..]));
             path = &path[..i];
         }
 
