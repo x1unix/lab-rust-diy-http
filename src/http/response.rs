@@ -12,7 +12,7 @@ impl Response {
         Response { status_code, body }
     }
 
-    pub fn send(&self, stream: &mut dyn Write) -> std::io::Result<()> {
+    pub fn send(&self, stream: &mut impl Write) -> std::io::Result<()> {
         write!(
             stream,
             "HTTP/1.1 {} {}\r\n\r\n{}",
