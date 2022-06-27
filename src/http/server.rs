@@ -51,7 +51,9 @@ impl Server {
             req.method, req.path
         );
         let rsp = Response::new(StatusCode::OK, Some(body));
-        write!(writer, "{}", rsp).unwrap();
+        if let Err(err) = rsp.send(writer) {
+            println!("[{addr}] Error: failed to serve response: {err}");
+        }
     }
 
     fn log_request(req: &Request, addr: &SocketAddr) {
