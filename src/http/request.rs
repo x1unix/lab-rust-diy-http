@@ -1,9 +1,7 @@
-use core::panic;
 use std::convert::{From, TryFrom};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str::FromStr;
-use std::string::ToString;
 
 pub enum Method {
     GET,
