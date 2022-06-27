@@ -24,7 +24,7 @@ impl Handler for EchoHandler {
                     </div>
                 </body>
             </html>",
-            req.method, req.path
+            req.method(), req.path()
         );
 
         Response::new(StatusCode::OK, Some(body))

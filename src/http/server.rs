@@ -61,11 +61,11 @@ impl Server {
     }
 
     fn log_request(req: &Request, addr: &SocketAddr) {
-        let query_params = match &req.query_string {
+        let query_params = match &req.query_string() {
             Some(str) => str.to_string(),
             None => String::new(),
         };
 
-        println!("[{}] {} {}{}", addr, req.method, req.path, &query_params,);
+        println!("[{}] {} {}{}", addr, req.method(), req.path(), &query_params,);
     }
 }

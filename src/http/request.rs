@@ -4,6 +4,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str::FromStr;
 
+#[derive(Copy, Clone)]
 pub enum Method {
     GET,
     POST,
@@ -58,9 +59,24 @@ impl Display for Method {
 }
 
 pub struct Request<'buf> {
-    pub path: &'buf str,
-    pub method: Method,
-    pub query_string: Option<QueryString<'buf>>,
+    path: &'buf str,
+    method: Method,
+    query_string: Option<QueryString<'buf>>,
+}
+
+impl<'buf> Request<'buf> {
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    pub fn method(&self) -> Method {
+        self.method
+    }
+
+    pub fn query_string(&self) -> Option<&QueryString> {
+        // Convert &Option<T> to Option<&T>
+        self.query_string.as_ref()
+    }
 }
 
 impl<'buf> TryFrom<&'buf [u8]> for Request<'buf> {
