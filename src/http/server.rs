@@ -1,8 +1,15 @@
-use crate::http::{Request, Response, StatusCode};
+use crate::http::{Request, Response};
 use std::{
-    io::{Read},
+    io::Read,
     net::{Shutdown, SocketAddr, TcpListener},
 };
+
+use super::ParseError;
+
+pub trait Handler {
+    fn handle_request(&mut self, req: &Request) -> Response;
+    fn handle_bad_request(&mut self, err: &ParseError) -> Response;
+}
 
 pub struct Server {
     address: String,
@@ -13,7 +20,7 @@ impl Server {
         Self { address }
     }
 
-    pub fn start(&self) {
+    pub fn start(&self, handler: &mut impl Handler) {
         let listener = TcpListener::bind(&self.address).unwrap();
         println!("Server is running on {}", self.address);
         loop {
@@ -26,7 +33,17 @@ impl Server {
                         continue;
                     }
 
-                    let rsp = Self::respond(&addr, &mut buffer);
+                    let rsp = match Request::try_from(&buffer[..]) {
+                        Ok(req) => {
+                            Self::log_request(&req, &addr);
+                            handler.handle_request(&req)
+                        }
+                        Err(err) => {
+                            println!("[{addr}] Error: failed to parse request: {err}");
+                            handler.handle_bad_request(&err)
+                        }
+                    };
+
                     match rsp.send(&mut stream) {
                         Ok(()) => {
                             println!("[{addr}] {} {}", rsp.status_code, rsp.status_code.phrase())
@@ -41,26 +58,6 @@ impl Server {
                 }
             }
         }
-    }
-
-    fn respond(addr: &SocketAddr, buff: &[u8]) -> Response {
-        match Request::try_from(&buff[..]) {
-            Ok(req) => Self::handle_request(&req, addr),
-            Err(err) => {
-                println!("[{addr}] Error: failed to parse request: {err}");
-                Response::new(StatusCode::BadRequest, Some(format!("{}", err)))
-            },
-        }
-    }
-
-    fn handle_request(req: &Request, addr: &SocketAddr) -> Response {
-        Self::log_request(&req, &addr);
-
-        let body = format!(
-            "<html><body><pre>{} {} from {addr}</pre></body></html>",
-            req.method, req.path
-        );
-        return Response::new(StatusCode::OK, Some(body));
     }
 
     fn log_request(req: &Request, addr: &SocketAddr) {
