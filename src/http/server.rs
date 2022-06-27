@@ -1,4 +1,4 @@
-use crate::http::Request;
+use crate::http::{Request, Response, StatusCode};
 use std::{
     io::{Read, Write},
     net::{Shutdown, TcpListener, SocketAddr},
@@ -24,7 +24,10 @@ impl Server {
                         Ok(_) => match Request::try_from(&buffer[..]) {
                             Ok(req) => {
                                 Self::log_request(&req, &addr);
-                                write!(stream, "{} {} from {addr}", req.method, req.path).unwrap();
+
+                                let body = format!("{} {} from {addr}", req.method, req.path); 
+                                let rsp = Response::new(StatusCode::OK, Some(body));
+                                write!(stream, "{}", rsp).unwrap();
                             }
                             Err(err) => {
                                 println!("Error: {err}");
