@@ -48,14 +48,19 @@ impl TryFrom<&[u8]> for Request {
     fn try_from(buff: &[u8]) -> Result<Self, Self::Error> {
         let req_str = std::str::from_utf8(buff)?;
         let (method, req_str) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
-        let (path, req_str) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
+        let (mut path, req_str) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
         let (protocol, _) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
 
         if protocol != "HTTP/1.1" {
             return Err(ParseError::InvalidProtocol);
         }
 
+        let mut query_string = None;
         let method: Method = method.parse()?;
+        if let Some(i) = path.find('?') {
+            query_string = Some(&path[i + 1..]);
+            path = &path[..i];
+        }
 
         unimplemented!();
     }
