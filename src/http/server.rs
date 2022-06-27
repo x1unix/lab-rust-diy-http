@@ -1,7 +1,7 @@
 use crate::http::{Request, Response, StatusCode};
 use std::{
     io::{Read, Write},
-    net::{Shutdown, TcpListener, SocketAddr},
+    net::{Shutdown, SocketAddr, TcpListener},
 };
 
 pub struct Server {
@@ -25,7 +25,7 @@ impl Server {
                             Ok(req) => {
                                 Self::log_request(&req, &addr);
 
-                                let body = format!("{} {} from {addr}", req.method, req.path); 
+                                let body = format!("{} {} from {addr}", req.method, req.path);
                                 let rsp = Response::new(StatusCode::OK, Some(body));
                                 write!(stream, "{}", rsp).unwrap();
                             }
@@ -50,15 +50,9 @@ impl Server {
     fn log_request(req: &Request, addr: &SocketAddr) {
         let query_params = match &req.query_string {
             Some(str) => str.to_string(),
-            None => String::new()
+            None => String::new(),
         };
 
-        println!(
-            "[{}] {} {}{}",
-            addr,
-            req.method,
-            req.path,
-            &query_params,
-        );
+        println!("[{}] {} {}{}", addr, req.method, req.path, &query_params,);
     }
 }

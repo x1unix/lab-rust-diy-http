@@ -1,8 +1,8 @@
+use super::query_string::QueryString;
 use std::convert::{From, TryFrom};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str::FromStr;
-use super::query_string::QueryString;
 
 pub enum Method {
     GET,
