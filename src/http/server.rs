@@ -23,11 +23,7 @@ impl Server {
                     match stream.read(&mut buffer) {
                         Ok(_) => match Request::try_from(&buffer[..]) {
                             Ok(req) => {
-                                Self::log_request(&req, &addr);
-
-                                let body = format!("{} {} from {addr}", req.method, req.path);
-                                let rsp = Response::new(StatusCode::OK, Some(body));
-                                write!(stream, "{}", rsp).unwrap();
+                                Self::handle_request(&req, &addr, &mut stream);
                             }
                             Err(err) => {
                                 println!("Error: {err}");
@@ -45,6 +41,17 @@ impl Server {
                 }
             }
         }
+    }
+
+    fn handle_request(req: &Request, addr: &SocketAddr, writer: &mut dyn Write) {
+        Self::log_request(&req, &addr);
+
+        let body = format!(
+            "<html><body><pre>{} {} from {addr}</pre></body></html>",
+            req.method, req.path
+        );
+        let rsp = Response::new(StatusCode::OK, Some(body));
+        write!(writer, "{}", rsp).unwrap();
     }
 
     fn log_request(req: &Request, addr: &SocketAddr) {
