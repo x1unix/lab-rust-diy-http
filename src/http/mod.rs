@@ -7,3 +7,4 @@ mod server;
 
 // export * as request from './request';
 pub mod request;
+pub mod query_string;
