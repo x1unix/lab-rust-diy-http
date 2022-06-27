@@ -3,7 +3,7 @@ use std::io::Write;
 
 #[derive(Debug)]
 pub struct Response {
-    status_code: StatusCode,
+    pub status_code: StatusCode,
     body: Option<String>,
 }
 
