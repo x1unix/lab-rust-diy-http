@@ -3,6 +3,7 @@ use std::convert::{From, TryFrom};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str::FromStr;
+use std::string::ToString;
 
 pub enum Method {
     GET,
@@ -37,15 +38,35 @@ impl FromStr for Method {
     }
 }
 
-pub struct Request {
-    path: String,
-    method: Method,
-    query_params: Option<String>,
+impl Display for Method {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::GET => "GET",
+                Self::POST => "POST",
+                Self::PUT => "PUT",
+                Self::HEAD => "HEAD",
+                Self::DELETE => "DELETE",
+                Self::OPTIONS => "OPTIONS",
+                Self::CONNECT => "CONNECT",
+                Self::TRACE => "TRACE",
+                Self::PATCH => "PATCH",
+            }
+        )
+    }
 }
 
-impl TryFrom<&[u8]> for Request {
+pub struct Request<'buff> {
+    pub path: &'buff str,
+    pub method: Method,
+    pub query_string: Option<&'buff str>,
+}
+
+impl<'buff> TryFrom<&'buff [u8]> for Request<'buff> {
     type Error = ParseError;
-    fn try_from(buff: &[u8]) -> Result<Self, Self::Error> {
+    fn try_from(buff: &'buff [u8]) -> Result<Self, Self::Error> {
         let req_str = std::str::from_utf8(buff)?;
         let (method, req_str) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
         let (mut path, req_str) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
@@ -62,7 +83,11 @@ impl TryFrom<&[u8]> for Request {
             path = &path[..i];
         }
 
-        unimplemented!();
+        Ok(Request {
+            path,
+            method,
+            query_string,
+        })
     }
 }
 

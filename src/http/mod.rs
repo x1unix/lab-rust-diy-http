@@ -1,6 +1,5 @@
-// export { Server } from './server';
-pub use request::Method;
-pub use request::ParseError;
+// export { Server, Method, ParseError } from './server';
+pub use request::{Method, ParseError, Request};
 pub use server::Server;
 
 // import * as server from './server';

@@ -1,3 +1,4 @@
+use crate::http::{ParseError, Request};
 use std::{
     io::{Read, Write},
     net::{Shutdown, TcpListener, TcpStream},
@@ -21,11 +22,27 @@ impl Server {
                     println!("Accepted connection from {addr}");
                     let mut buffer = [0; 4096];
                     match stream.read(&mut buffer) {
-                        Ok(count) => {
-                            let req_str = String::from_utf8_lossy(&buffer[0..count]);
-                            println!("Accepted request ({count} bytes): {req_str:?}");
-                            stream.write(&buffer[..count]).unwrap();
-                        }
+                        Ok(_) => match Request::try_from(&buffer[..]) {
+                            Ok(req) => {
+                                println!(
+                                    "{} {} {}",
+                                    req.method,
+                                    req.path,
+                                    req.query_string.unwrap_or("")
+                                );
+                                write!(stream, "{} {}", req.method, req.path).unwrap();
+                            }
+                            Err(err) => {
+                                println!("Error: {err}");
+                                write!(stream, "Error: {}", err).unwrap();
+                            }
+                        },
+
+                        // Ok(count) => {
+                        //     let req_str = String::from_utf8_lossy(&buffer[0..count]);
+                        //     println!("Accepted request ({count} bytes): {req_str:?}");
+                        //     stream.write(&buffer[..count]).unwrap();
+                        // }
                         Err(err) => println!("Failed to read request: {err:}"),
                     }
 
