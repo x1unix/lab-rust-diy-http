@@ -1,8 +1,8 @@
-use crate::http::{Handler, ParseError, Request, Response, StatusCode, Method};
+use crate::http::{Handler, Method, ParseError, Request, Response, StatusCode};
 use std::fs;
 
 pub struct EchoHandler {
-    static_dir: String
+    static_dir: String,
 }
 
 impl EchoHandler {
@@ -11,13 +11,30 @@ impl EchoHandler {
     }
     fn read_file(&self, path: &str) -> std::io::Result<String> {
         // TODO: use filepath join and check path
-        let full_path = format!("{}/{}", self.static_dir, path);
-        fs::read_to_string(full_path.as_str())
+        fs::read_to_string(path)
     }
+
+    fn normalize_path(&self, path: &str) -> Option<String> {
+        let full_path = format!("{}/{}", self.static_dir, path);
+        match fs::canonicalize(full_path) {
+            Ok(canonical) => {
+                if !canonical.starts_with(&self.static_dir) {
+                    return None;
+                }
+
+                Some(canonical.into_os_string().into_string().unwrap())
+            }
+            Err(_) => None,
+        }
+    }
+
     fn serve_file(&self, path: &str) -> Response {
-        match self.read_file(path) {
-            Ok(data) => Response::new(StatusCode::OK, Some(data)),
-            Err(err) => Response::new(StatusCode::NotFound, Some(format!("Error: {err}")))
+        match self.normalize_path(path) {
+            Some(full_path) => match self.read_file(&full_path) {
+                Ok(data) => Response::new(StatusCode::OK, Some(data)),
+                Err(err) => Response::new(StatusCode::NotFound, Some(format!("Error: {err}"))),
+            },
+            None => Response::new(StatusCode::NotFound, None),
         }
     }
 }
@@ -29,7 +46,10 @@ impl Handler for EchoHandler {
                 "/" => self.serve_file("index.html"),
                 path => self.serve_file(path),
             },
-            _ => Response::new(StatusCode::BadRequest, Some("Unsupported HTTP method".to_string()))
+            _ => Response::new(
+                StatusCode::BadRequest,
+                Some("Unsupported HTTP method".to_string()),
+            ),
         }
     }
 
