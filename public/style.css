@@ -1,0 +1,11 @@
+body {
+    font: 10pt sans-serif;
+}
+
+.container {
+    width: 100%;
+    max-width: 960px;
+    padding: 32px;
+    display: table;
+    margin: 0 auto;
+}
