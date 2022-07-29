@@ -2,7 +2,11 @@ use super::query_string::QueryString;
 use std::convert::{From, TryFrom};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::io::{BufRead, BufReader, Read};
 use std::str::FromStr;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Copy, Clone)]
 pub enum Method {
@@ -16,6 +20,8 @@ pub enum Method {
     TRACE,
     PATCH,
 }
+
+const HTTP_HEADER_MAX_SIZE: usize = 8 * 1024; // 8KiB
 
 pub struct InvalidMethod;
 
@@ -61,7 +67,7 @@ impl Display for Method {
 pub struct Request<'buf> {
     path: &'buf str,
     method: Method,
-    query_string: Option<QueryString<'buf>>,
+    query_string: Option<QueryString>,
 }
 
 impl<'buf> Request<'buf> {
@@ -76,6 +82,17 @@ impl<'buf> Request<'buf> {
     pub fn query_string(&self) -> Option<&QueryString> {
         // Convert &Option<T> to Option<&T>
         self.query_string.as_ref()
+    }
+}
+
+impl<'buf> TryFrom<&'buf mut dyn Read> for Request<'buf> {
+    type Error = ParseError;
+    fn try_from(src: &'buf mut dyn Read) -> Result<Self, Self::Error> {
+        let mut reader = BufReader::new(src);
+        let mut buff = String::with_capacity(HTTP_HEADER_MAX_SIZE);
+        reader.read_line(&mut buff)?;
+
+        unimplemented!();
     }
 }
 
@@ -106,6 +123,37 @@ impl<'buf> TryFrom<&'buf [u8]> for Request<'buf> {
     }
 }
 
+struct RequestHeader<'buf> {
+    path: String,
+    method: Method,
+    query_string: Option<QueryString>,
+}
+
+fn parse_header(req_str: &str) -> Result<RequestHeader, ParseError> {
+    let (method, req_str) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
+    let (path, req_str) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
+    let (protocol, _) = get_next_word(req_str).ok_or(ParseError::InvalidRequest)?;
+
+    if protocol != "HTTP/1.1" {
+        return Err(ParseError::InvalidProtocol);
+    }
+
+    let method: Method = method.parse()?;
+    if let Some(i) = path.find('?') {
+        return Ok(RequestHeader {
+            path: String::from(&path[..i]),
+            query_string: Some(QueryString::from(&path[i + 1..])),
+            method,
+        });
+    }
+
+    Ok(RequestHeader {
+        path: String::from(path),
+        query_string: None,
+        method,
+    })
+}
+
 fn get_next_word(src: &str) -> Option<(&str, &str)> {
     if src.is_empty() {
         return None;
@@ -124,16 +172,26 @@ pub enum ParseError {
     InvalidMethod,
     InvalidProtocol,
     InvalidEncoding,
+    ReadError(std::io::Error),
 }
 
 impl ParseError {
-    pub fn message(&self) -> &str {
+    pub fn message(&self) -> String {
         match self {
-            Self::InvalidRequest => "Invalid request",
-            Self::InvalidMethod => "Invalid method",
-            Self::InvalidProtocol => "Invalid protocol",
-            Self::InvalidEncoding => "Invalid encoding",
+            Self::InvalidRequest => String::from("Invalid request"),
+            Self::InvalidMethod => String::from("Invalid method"),
+            Self::InvalidProtocol => String::from("Invalid protocol"),
+            Self::InvalidEncoding => String::from("Invalid encoding"),
+            Self::ReadError(err) => {
+                format!("Read error: {err}")
+            }
         }
+    }
+}
+
+impl From<std::io::Error> for ParseError {
+    fn from(err: std::io::Error) -> Self {
+        Self::ReadError(err)
     }
 }
 
@@ -157,6 +215,10 @@ impl Display for ParseError {
 
 impl Debug for ParseError {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        if let Self::ReadError(err) = self {
+            return write!(f, "ReadError({})", err);
+        }
+
         write!(
             f,
             "{}",
@@ -165,6 +227,7 @@ impl Debug for ParseError {
                 Self::InvalidMethod => "InvalidMethod",
                 Self::InvalidProtocol => "InvalidProtocol",
                 Self::InvalidEncoding => "InvalidEncoding",
+                Self::ReadError(_) => "ReadError",
             }
         )
     }
