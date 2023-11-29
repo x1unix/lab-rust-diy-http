@@ -98,6 +98,7 @@ impl<'buf> TryFrom<&'buf [u8]> for Request<'buf> {
             path = &path[..i];
         }
 
+        dbg!(req_str);
         Ok(Request {
             path,
             method,

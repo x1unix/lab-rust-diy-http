@@ -1,7 +1,8 @@
 use crate::http::{Request, Response};
+use anyhow::{Context, Result};
 use std::{
     io::Read,
-    net::{Shutdown, SocketAddr, TcpListener},
+    net::{Shutdown, SocketAddr, TcpListener, TcpStream},
 };
 
 use super::ParseError;
@@ -21,43 +22,32 @@ impl Server {
     }
 
     pub fn start(&self, handler: &mut impl Handler) {
-        let listener = TcpListener::bind(&self.address).unwrap();
+        let mut listener = TcpListener::bind(&self.address).unwrap();
         println!("Server is running on {}", self.address);
         loop {
-            match listener.accept() {
-                Ok((mut stream, addr)) => {
-                    let mut buffer = [0; 4096];
-                    if let Err(err) = stream.read(&mut buffer) {
-                        println!("[{addr}] Error: failed to read request: {err:}");
-                        _ = stream.shutdown(Shutdown::Both);
-                        continue;
-                    }
-
-                    let rsp = match Request::try_from(&buffer[..]) {
-                        Ok(req) => {
-                            Self::log_request(&req, &addr);
-                            handler.handle_request(&req)
-                        }
-                        Err(err) => {
-                            println!("[{addr}] Error: failed to parse request: {err}");
-                            handler.handle_bad_request(&err)
-                        }
-                    };
-
-                    match rsp.send(&mut stream) {
-                        Ok(()) => {
-                            println!("[{addr}] {} {}", rsp.status_code, rsp.status_code.phrase())
-                        }
-                        Err(err) => println!("[{addr}] Error: failed to serve response: {err}"),
-                    }
-                    _ = stream.shutdown(Shutdown::Both);
-                }
-                Err(err) => {
-                    println!("Failed to accept connection: {err}");
-                    continue;
-                }
+            if let Err(err) = self.accept_request(&mut listener, handler) {
+                println!("Error: {err}")
             }
         }
+    }
+
+    fn accept_request(&self, listener: &mut TcpListener, handler: &mut impl Handler) -> Result<()> {
+        let (mut stream, addr) = listener.accept().with_context(|| "TCP accept")?;
+        let mut buff = Box::new([0; 1024]);
+        let byte_count = stream
+            .read(&mut *buff)
+            .with_context(|| format!("TCP read failed: {}", addr))?;
+
+        println!("Received {byte_count} bytes from {addr}");
+        let rsp = match Request::try_from(&buff[0..byte_count]) {
+            Ok(req) => {
+                Self::log_request(&req, &addr);
+                handler.handle_request(&req)
+            }
+            Err(err) => handler.handle_bad_request(&err),
+        };
+        rsp.send(&mut stream)
+            .with_context(|| format!("{addr}: failed to send response"))
     }
 
     fn log_request(req: &Request, addr: &SocketAddr) {
@@ -66,6 +56,12 @@ impl Server {
             None => String::new(),
         };
 
-        println!("[{}] {} {}{}", addr, req.method(), req.path(), &query_params,);
+        println!(
+            "[{}] {} {}{}",
+            addr,
+            req.method(),
+            req.path(),
+            &query_params,
+        );
     }
 }
