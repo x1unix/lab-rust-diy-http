@@ -33,18 +33,15 @@ impl Server {
 
     fn accept_request(&self, listener: &mut TcpListener, handler: &mut impl Handler) -> Result<()> {
         let (mut stream, addr) = listener.accept().with_context(|| "TCP accept")?;
-        let mut buff = Box::new([0; 1024]);
-        let byte_count = stream
-            .read(&mut *buff)
-            .with_context(|| format!("TCP read failed: {}", addr))?;
-
-        println!("Received {byte_count} bytes from {addr}");
-        let rsp = match Request::try_from(&buff[0..byte_count]) {
+        let rsp = match Request::from_reader(&mut stream) {
             Ok(req) => {
                 Self::log_request(&req, &addr);
                 handler.handle_request(&req)
             }
-            Err(err) => handler.handle_bad_request(&err),
+            Err(err) => {
+                println!("{addr}: can't parse request - {err}");
+                handler.handle_bad_request(&err)
+            }
         };
         rsp.send(&mut stream)
             .with_context(|| format!("{addr}: failed to send response"))
@@ -56,12 +53,6 @@ impl Server {
             None => String::new(),
         };
 
-        println!(
-            "[{}] {} {}{}",
-            addr,
-            req.method(),
-            req.path(),
-            &query_params,
-        );
+        println!("[{}] {} {}{}", addr, req.method, req.path(), &query_params,);
     }
 }

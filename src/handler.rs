@@ -41,7 +41,7 @@ impl EchoHandler {
 
 impl Handler for EchoHandler {
     fn handle_request(&mut self, req: &Request) -> Response {
-        match req.method() {
+        match req.method {
             Method::GET => match req.path() {
                 "/" => self.serve_file("index.html"),
                 path => self.serve_file(path),
