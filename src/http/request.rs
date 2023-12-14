@@ -3,12 +3,13 @@ use super::query_string::QueryString;
 use super::url::URL;
 use std::convert::{From, TryFrom};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::io::Read;
+use std::io::{Cursor, Read};
 use std::str::FromStr;
 use thiserror::Error;
 
 const READ_BUFFER_SIZE: usize = 1024;
 const REQUEST_DELIMITER: &[u8; 4] = b"\r\n\r\n";
+const REQUEST_DELIMITER_LEN: usize = REQUEST_DELIMITER.len();
 const READ_LIMIT: usize = 32 * 1024;
 
 #[derive(Error, Debug)]
@@ -95,14 +96,14 @@ impl Display for Method {
     }
 }
 
-pub struct Request {
+pub struct Request<'a> {
     pub method: Method,
     pub url: URL,
     pub headers: Headers,
-    pub body: Option<Box<dyn Read>>,
+    pub body: Box<dyn Read + 'a>,
 }
 
-impl<'buf> Request {
+impl<'a> Request<'a> {
     pub fn path(&self) -> &str {
         &self.url.path
     }
@@ -112,30 +113,31 @@ impl<'buf> Request {
         self.url.query.as_ref()
     }
 
-    pub fn from_reader(reader: &mut dyn Read) -> Result<Request, ParseError> {
+    pub fn from_reader(reader: &'a mut dyn Read) -> Result<Request, ParseError> {
         // Consume HTTP request until find payload delimiter.
         let (buff, body_offset) = read_until_payload(reader)?;
 
-        dbg!(buff.len(), &buff[body_offset..]);
         let header_str = std::str::from_utf8(&buff[0..body_offset])?;
         let (url, method, offset) = parse_proto(header_str)?;
 
         // Collect http headers until request body starts
         let headers = Headers::from(&header_str[offset..]);
 
-        dbg!(&buff[body_offset..]);
+        // Combine consumed request payload part with reader.
+        let payload_remainder = buff[body_offset..].to_vec();
+        let body = Box::new(Cursor::new(payload_remainder).chain(reader));
 
         Ok(Request {
             url,
             method,
             headers,
-            body: None,
+            body,
         })
     }
 }
 
 fn find_body_delimiter(buf: &[u8]) -> Option<usize> {
-    buf.windows(REQUEST_DELIMITER.len())
+    buf.windows(REQUEST_DELIMITER_LEN)
         .position(|v| v == REQUEST_DELIMITER)
 }
 
@@ -175,7 +177,7 @@ fn read_until_payload(src: &mut dyn Read) -> Result<(Vec<u8>, usize), ParseError
         match find_body_delimiter(&buff) {
             Some(end_offset) => {
                 buff.resize(bytes_read, 0);
-                return Ok((buff, end_offset));
+                return Ok((buff, end_offset + REQUEST_DELIMITER_LEN));
             }
             None if !can_continue => {
                 return Err(ParseError::MissingBody);

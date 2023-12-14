@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 use crate::http::{Handler, Method, ParseError, Request, Response, StatusCode};
 use std::fs;
 
@@ -40,12 +42,18 @@ impl EchoHandler {
 }
 
 impl Handler for EchoHandler {
-    fn handle_request(&mut self, req: &Request) -> Response {
+    fn handle_request(&mut self, req: &mut Request) -> Response {
         match req.method {
             Method::GET => match req.path() {
                 "/" => self.serve_file("index.html"),
                 path => self.serve_file(path),
             },
+            Method::POST => {
+                // TODO: use streams instead of strings in Response.
+                dump_request(req).unwrap_or_else(|e| {
+                    Response::new(StatusCode::BadRequest, Some(format!("{}", e)))
+                })
+            }
             _ => Response::new(
                 StatusCode::BadRequest,
                 Some("Unsupported HTTP method".to_string()),
@@ -56,4 +64,17 @@ impl Handler for EchoHandler {
     fn handle_bad_request(&mut self, err: &ParseError) -> Response {
         Response::new(StatusCode::BadRequest, Some(format!("{}", err)))
     }
+}
+
+fn dump_request(req: &mut Request) -> anyhow::Result<Response> {
+    // Just read everything and return back.
+    let mut buff = Vec::with_capacity(4096);
+    req.body
+        .read_to_end(&mut buff)
+        .with_context(|| "can't read request")?;
+
+    // Keep this mess until Response gets Read support
+    Ok(Response::new(StatusCode::OK, unsafe {
+        Some(String::from_utf8_unchecked(buff))
+    }))
 }

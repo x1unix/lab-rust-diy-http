@@ -8,7 +8,7 @@ use std::{
 use super::ParseError;
 
 pub trait Handler {
-    fn handle_request(&mut self, req: &Request) -> Response;
+    fn handle_request(&mut self, req: &mut Request) -> Response;
     fn handle_bad_request(&mut self, err: &ParseError) -> Response;
 }
 
@@ -34,15 +34,16 @@ impl Server {
     fn accept_request(&self, listener: &mut TcpListener, handler: &mut impl Handler) -> Result<()> {
         let (mut stream, addr) = listener.accept().with_context(|| "TCP accept")?;
         let rsp = match Request::from_reader(&mut stream) {
-            Ok(req) => {
+            Ok(mut req) => {
                 Self::log_request(&req, &addr);
-                handler.handle_request(&req)
+                handler.handle_request(&mut req)
             }
             Err(err) => {
                 println!("{addr}: can't parse request - {err}");
                 handler.handle_bad_request(&err)
             }
         };
+        dbg!(&rsp);
         rsp.send(&mut stream)
             .with_context(|| format!("{addr}: failed to send response"))
     }
