@@ -100,7 +100,7 @@ pub struct Request<'a> {
     pub method: Method,
     pub url: URL,
     pub headers: Headers,
-    pub body: Box<dyn Read + 'a>,
+    pub body: Option<Box<dyn Read + 'a>>,
 }
 
 impl<'a> Request<'a> {
@@ -123,9 +123,20 @@ impl<'a> Request<'a> {
         // Collect http headers until request body starts
         let headers = Headers::from(&header_str[offset..]);
 
-        // Combine consumed request payload part with reader.
-        let payload_remainder = buff[body_offset..].to_vec();
-        let body = Box::new(Cursor::new(payload_remainder).chain(reader));
+        let body = match method {
+            Method::POST | Method::PUT | Method::PATCH => {
+                // Combine consumed request payload part with reader.
+                // We don't support "Transfer-Encoding: Chunked" yet.
+                let content_length = headers.content_length().ok_or(ParseError::InvalidRequest)?;
+                let payload_remainder = buff[body_offset..].to_vec();
+                let remaiming_length = content_length - (payload_remainder.len() as u64);
+
+                let body: Box<dyn Read> =
+                    Box::new(Cursor::new(payload_remainder).chain(reader.take(remaiming_length)));
+                Some(body)
+            }
+            _ => None,
+        };
 
         Ok(Request {
             url,
@@ -139,6 +150,15 @@ impl<'a> Request<'a> {
 fn find_body_delimiter(buf: &[u8]) -> Option<usize> {
     buf.windows(REQUEST_DELIMITER_LEN)
         .position(|v| v == REQUEST_DELIMITER)
+}
+
+impl Read for Request<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self.body {
+            Some(ref mut body) => body.read(buf),
+            _ => Ok(0),
+        }
+    }
 }
 
 // impl TryFrom<&[u8]> for Request {

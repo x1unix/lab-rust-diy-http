@@ -1,7 +1,7 @@
-use anyhow::Context;
-
 use crate::http::{Handler, Method, ParseError, Request, Response, StatusCode};
+use anyhow::Context;
 use std::fs;
+use std::io::Read;
 
 pub struct EchoHandler {
     static_dir: String,
@@ -67,10 +67,14 @@ impl Handler for EchoHandler {
 }
 
 fn dump_request(req: &mut Request) -> anyhow::Result<Response> {
+    let length = req
+        .headers
+        .content_length()
+        .ok_or(anyhow::anyhow!("Missing content length"))?;
+
     // Just read everything and return back.
-    let mut buff = Vec::with_capacity(4096);
-    req.body
-        .read_to_end(&mut buff)
+    let mut buff = Vec::with_capacity(length.try_into()?);
+    req.read_to_end(&mut buff)
         .with_context(|| "can't read request")?;
 
     // Keep this mess until Response gets Read support

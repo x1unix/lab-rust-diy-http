@@ -4,12 +4,18 @@ use std::{collections::HashMap, ops::Deref};
 pub struct Headers(HashMap<String, String>);
 
 impl Headers {
-    fn get(&self, key: &str) -> Option<&str> {
+    pub fn get(&self, key: &str) -> Option<&str> {
         self.0.get(key).map(|v| v.deref())
     }
 
-    fn add(&mut self, key: String, value: String) {
-        self.0.insert(key, value);
+    pub fn add(&mut self, key: String, value: String) {
+        self.0.insert(key.to_lowercase(), value);
+    }
+
+    pub fn content_length(&self) -> Option<u64> {
+        self.0
+            .get("content-length")
+            .and_then(|s| s.parse::<u64>().ok())
     }
 }
 
