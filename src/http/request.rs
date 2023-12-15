@@ -100,7 +100,8 @@ pub struct Request<'a> {
     pub method: Method,
     pub url: URL,
     pub headers: Headers,
-    pub body: Option<Box<dyn Read + 'a>>,
+
+    body: Option<Box<dyn Read + 'a>>,
 }
 
 impl<'a> Request<'a> {
@@ -161,28 +162,13 @@ impl Read for Request<'_> {
     }
 }
 
-// impl TryFrom<&[u8]> for Request {
-//     type Error = ParseError;
-//     fn try_from(buff: &[u8]) -> Result<Self, Self::Error> {
-//         let req_str = std::str::from_utf8(buff)?;
-//         dbg!(req_str);
+impl<'a> TryFrom<&'a mut dyn Read> for Request<'a> {
+    type Error = ParseError;
 
-//         let (url, method, offset) = parse_proto(req_str)?;
-//         Ok(Request {
-//             url,
-//             method,
-//             body: None,
-//         })
-//     }
-// }
-
-// impl TryFrom<dyn Read> for Request {
-//     type Error = ParseError;
-
-//     fn try_from(value: dyn Read) -> Result<Self, Self::Error> {
-//         todo!()
-//     }
-// }
+    fn try_from(reader: &'a mut dyn Read) -> Result<Self, Self::Error> {
+        Request::from_reader(reader)
+    }
+}
 
 /// Reads the reader until HTTP request payload delimiter (`\r\n\r\n`).
 ///

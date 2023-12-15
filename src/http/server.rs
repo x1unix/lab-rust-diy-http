@@ -43,7 +43,8 @@ impl Server {
                 handler.handle_bad_request(&err)
             }
         };
-        dbg!(&rsp);
+
+        println!("{}", rsp.status_code);
         rsp.send(&mut stream)
             .with_context(|| format!("{addr}: failed to send response"))
     }
