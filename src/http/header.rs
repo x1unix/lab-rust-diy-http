@@ -29,7 +29,9 @@ fn split_header(header: &str) -> Option<(String, String)> {
     // TODO: normalize header names
     let mut iter = header.splitn(2, ": ");
     match (iter.next(), iter.next()) {
-        (Some(key), Some(val)) if !key.is_empty() => Some((key.to_owned(), val.to_owned())),
+        (Some(key), Some(val)) if !key.is_empty() => {
+            Some((key.to_lowercase().to_owned(), val.to_owned()))
+        }
         _ => None,
     }
 }
