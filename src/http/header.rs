@@ -1,4 +1,18 @@
-use std::{collections::HashMap, ops::Deref};
+use std::{
+    collections::HashMap,
+    io::{self, Write},
+    ops::Deref,
+};
+use strum_macros::{self, AsRefStr, Display};
+
+#[derive(Display, AsRefStr, Debug)]
+pub enum Names {
+    #[strum(serialize = "content-length")]
+    ContentLength,
+
+    #[strum(serialize = "transfer-encoding")]
+    TransferEncoding,
+}
 
 #[derive(Debug)]
 pub struct Headers(HashMap<String, String>);
@@ -12,10 +26,35 @@ impl Headers {
         self.0.insert(key.to_lowercase(), value);
     }
 
+    pub fn has(&self, key: &str) -> bool {
+        self.0.contains_key(key)
+    }
+
     pub fn content_length(&self) -> Option<u64> {
         self.0
             .get("content-length")
             .and_then(|s| s.parse::<u64>().ok())
+    }
+
+    pub fn set_content_length(&mut self, length: usize) {
+        self.0.remove(Names::TransferEncoding.as_ref());
+        self.0
+            .insert(Names::ContentLength.to_string(), length.to_string());
+    }
+
+    pub fn send(&self, writer: &mut impl Write) -> io::Result<()> {
+        for (i, (k, v)) in self.0.iter().enumerate() {
+            if i != 0 {
+                write!(writer, "\r\n")?;
+            }
+            write!(writer, "{k}: {v}")?;
+        }
+
+        Ok(())
+    }
+
+    pub fn new() -> Headers {
+        Headers(HashMap::new())
     }
 }
 
