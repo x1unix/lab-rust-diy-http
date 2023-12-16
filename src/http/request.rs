@@ -212,8 +212,6 @@ fn read_until_payload(src: &mut dyn Read) -> Result<(Vec<u8>, usize), ParseError
 }
 
 fn parse_proto(src: &str) -> Result<(URL, Method, usize), ParseError> {
-    // GET /path HTTP/1.1
-    // TODO: handle very long paths...
     let head_end = src.find('\r').ok_or_else(|| ParseError::InvalidRequest)?;
     let chunks: Vec<&str> = src[..head_end].splitn(3, ' ').collect();
     if chunks.len() != 3 {

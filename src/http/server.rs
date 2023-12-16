@@ -26,7 +26,8 @@ impl Server {
         println!("Server is running on {}", self.address);
         loop {
             if let Err(err) = self.accept_request(&mut listener, handler) {
-                println!("Error: {err}")
+                println!("Error: {err}");
+                dbg!(err);
             }
         }
     }
