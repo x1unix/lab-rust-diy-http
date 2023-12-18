@@ -1,7 +1,6 @@
-use crate::http::{Handler, Method, ParseError, Request, Response, StatusCode};
-use anyhow::Context;
+use crate::http::{Handler, HeaderNames, Method, ParseError, Request, Response, StatusCode};
 use std::fs;
-use std::io::Read;
+use std::path::Path;
 
 pub struct EchoHandler {
     static_dir: String,
@@ -18,31 +17,47 @@ impl EchoHandler {
 
     fn normalize_path(&self, path: &str) -> Option<String> {
         let full_path = format!("{}/{}", self.static_dir, path);
-        match fs::canonicalize(full_path) {
-            Ok(canonical) => {
-                if !canonical.starts_with(&self.static_dir) {
-                    return None;
-                }
-
-                Some(canonical.into_os_string().into_string().unwrap())
-            }
-            Err(_) => None,
-        }
+        fs::canonicalize(full_path)
+            .ok()
+            .filter(|p| p.starts_with(&self.static_dir))
+            .and_then(|p| p.into_os_string().into_string().ok())
     }
 
-    fn serve_file(&self, path: &str) -> Response {
-        match self.normalize_path(path) {
-            Some(full_path) => match self.read_file(&full_path) {
-                Ok(data) => Response::new(StatusCode::OK, Some(data)),
-                Err(err) => Response::new(StatusCode::NotFound, Some(format!("Error: {err}"))),
-            },
-            None => Response::new(StatusCode::NotFound, None),
-        }
+    fn guess_content_type(filename: &str) -> String {
+        Path::new(filename)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .and_then(|ext| match ext {
+                "jpg" | "jpeg" | "png" | "gif" | "webp" => Some(format!("image/{ext}")),
+                "html" | "txt" | "css" => Some(format!("text/{ext}")),
+                "wasm" | "js" | "pdf" => Some(format!("application/{ext}")),
+                _ => None,
+            })
+            .unwrap_or_else(|| String::from("application/otcet-stream"))
+    }
+
+    fn serve_file<'a>(&self, path: &'a str) -> Response<'a> {
+        self.normalize_path(path)
+            .and_then(|f| fs::File::open(&f).ok())
+            .and_then(|f| {
+                Some({
+                    let mut rsp = Response::new(StatusCode::OK)
+                        .with_content_type(Self::guess_content_type(path));
+                    if let Ok(stat) = f.metadata() {
+                        rsp.headers.set_content_length(stat.len())
+                    }
+
+                    rsp.with_body(Box::new(f))
+                })
+            })
+            .unwrap_or_else(|| {
+                Response::string(StatusCode::NotFound, format!("File {} not found", path))
+            })
     }
 }
 
 impl Handler for EchoHandler {
-    fn handle_request(&mut self, req: &mut Request) -> Response {
+    fn handle_request<'a>(&mut self, req: Request<'a>) -> Response<'a> {
         match req.method {
             Method::GET => match req.path() {
                 "/" => self.serve_file("index.html"),
@@ -50,35 +65,36 @@ impl Handler for EchoHandler {
             },
             Method::POST => {
                 // TODO: use streams instead of strings in Response.
-                dump_request(req).unwrap_or_else(|e| {
-                    Response::new(StatusCode::BadRequest, Some(format!("{}", e)))
-                })
+                dump_request(req)
+                    .unwrap_or_else(|e| Response::string(StatusCode::BadRequest, format!("{}", e)))
             }
-            _ => Response::new(
+            _ => Response::string(
                 StatusCode::BadRequest,
-                Some("Unsupported HTTP method".to_string()),
+                "Unsupported HTTP method".to_string(),
             ),
         }
     }
 
     fn handle_bad_request(&mut self, err: &ParseError) -> Response {
-        Response::new(StatusCode::BadRequest, Some(format!("{}", err)))
+        Response::error(StatusCode::BadRequest, err)
     }
 }
 
-fn dump_request(req: &mut Request) -> anyhow::Result<Response> {
+fn dump_request(req: Request) -> anyhow::Result<Response> {
+    let req = Box::new(req);
     let length = req
         .headers
         .content_length()
         .ok_or(anyhow::anyhow!("Missing content length"))?;
 
-    // Just read everything and return back.
-    let mut buff = Vec::with_capacity(length.try_into()?);
-    req.read_to_end(&mut buff)
-        .with_context(|| "can't read request")?;
+    let content_type = req
+        .headers
+        .get(HeaderNames::ContentType.as_ref())
+        .unwrap_or("application/otcet-stream");
 
     // Keep this mess until Response gets Read support
-    Ok(Response::new(StatusCode::OK, unsafe {
-        Some(String::from_utf8_unchecked(buff))
-    }))
+    Ok(Response::new(StatusCode::OK)
+        .with_content_type(content_type.to_owned())
+        .with_content_length(length)
+        .with_body(req))
 }

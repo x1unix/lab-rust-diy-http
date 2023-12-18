@@ -1,4 +1,5 @@
 // export { Server, Method, ParseError } from './server';
+pub use header::{Headers, Names as HeaderNames};
 pub use query_string::{QueryParam, QueryString};
 pub use request::{Method, ParseError, Request};
 pub use response::*;

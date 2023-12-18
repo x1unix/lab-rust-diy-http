@@ -12,6 +12,9 @@ pub enum Names {
 
     #[strum(serialize = "transfer-encoding")]
     TransferEncoding,
+
+    #[strum(serialize = "content-type")]
+    ContentType,
 }
 
 #[derive(Debug)]
@@ -36,7 +39,7 @@ impl Headers {
             .and_then(|s| s.parse::<u64>().ok())
     }
 
-    pub fn set_content_length(&mut self, length: usize) {
+    pub fn set_content_length(&mut self, length: u64) {
         self.0.remove(Names::TransferEncoding.as_ref());
         self.0
             .insert(Names::ContentLength.to_string(), length.to_string());
