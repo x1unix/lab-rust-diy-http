@@ -29,6 +29,10 @@ impl Headers {
         self.0.insert(key.to_lowercase(), value);
     }
 
+    pub fn insert(&mut self, key: &str, value: &str) {
+        self.0.insert(key.to_lowercase(), value.to_owned());
+    }
+
     pub fn has(&self, key: &str) -> bool {
         self.0.contains_key(key)
     }

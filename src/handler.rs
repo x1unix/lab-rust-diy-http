@@ -5,7 +5,7 @@ use std::fs;
 use std::io::{Cursor, Read};
 use std::path::Path;
 
-const MAX_REQUEST_SIZE: u64 = 1024 * 1024 * 10;
+const MAX_REQUEST_SIZE: u64 = 1024 * 1024;
 
 pub struct EchoHandler {
     static_dir: String,

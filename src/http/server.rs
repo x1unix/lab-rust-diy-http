@@ -51,6 +51,10 @@ impl<'a> Server<'a> {
             }
         };
 
+        // Default headers
+        rsp.headers.insert("Server", "Really bad Rust server");
+        rsp.headers.insert("X-Powered-By", "PHP/5.3.0");
+
         println!("{}", rsp.status_code);
         if let Err(err) = rsp.send(&mut stream) {
             println!("{addr}: failed to send response - {err}")
