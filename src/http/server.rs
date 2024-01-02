@@ -47,23 +47,6 @@ impl Server {
             .with_context(|| format!("{addr}: failed to send response"))
     }
 
-    fn do_req<'a>(
-        stream: &'a mut TcpStream,
-        addr: &SocketAddr,
-        handler: &'a mut impl Handler,
-    ) -> Response<'a> {
-        match Request::from_reader(stream) {
-            Ok(req) => {
-                Self::log_request(&req, &addr);
-                handler.handle_request(req)
-            }
-            Err(err) => {
-                println!("{addr}: can't parse request - {err}");
-                handler.handle_bad_request(&err)
-            }
-        }
-    }
-
     fn log_request(req: &Request, addr: &SocketAddr) {
         let query_params = match &req.query_string() {
             Some(str) => str.to_string(),
