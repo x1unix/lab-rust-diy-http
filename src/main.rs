@@ -12,7 +12,7 @@ fn main() {
         .unwrap_or(format!("{}/public", env!("CARGO_MANIFEST_DIR")).to_string());
 
     println!("Serving files from {}", static_path);
-    let handler = handler::EchoHandler::new(static_path);
+    let handler = handler::StaticHandler::new(static_path);
     let srv = Server::new("127.0.0.1:8080".to_string(), &handler);
     srv.start();
 }

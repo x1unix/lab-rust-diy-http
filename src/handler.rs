@@ -1,31 +1,32 @@
-use anyhow::Context;
+use anyhow::{Context, Result};
 
 use crate::http::{Handler, HeaderNames, Method, ParseError, Request, Response, StatusCode};
 use std::fs;
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Write};
 use std::path::Path;
 
 const MAX_REQUEST_SIZE: u64 = 1024 * 1024;
+const INDEX_FILE: &str = "index.html";
 
-pub struct EchoHandler {
+pub struct StaticHandler {
     static_dir: String,
 }
 
-impl EchoHandler {
+impl StaticHandler {
     pub fn new(static_dir: String) -> Self {
         Self { static_dir }
     }
-    fn read_file(&self, path: &str) -> std::io::Result<String> {
-        // TODO: use filepath join and check path
-        fs::read_to_string(path)
-    }
 
-    fn normalize_path(&self, path: &str) -> Option<String> {
+    fn normalize_path(&self, path: &str) -> Result<String> {
         let full_path = format!("{}/{}", self.static_dir, path);
         fs::canonicalize(full_path)
-            .ok()
-            .filter(|p| p.starts_with(&self.static_dir))
-            .and_then(|p| p.into_os_string().into_string().ok())
+            .with_context(|| format!("Not Found: {}", path))
+            .and_then(|p| {
+                p.into_os_string()
+                    .into_string()
+                    .map_err(|_| anyhow::anyhow!("Failed to convert path to string"))
+            })
+            .map_err(Into::into)
     }
 
     fn guess_content_type(filename: &str) -> String {
@@ -43,32 +44,62 @@ impl EchoHandler {
 
     fn serve_file<'a>(&self, path: &str) -> Response<'a> {
         self.normalize_path(path)
-            .and_then(|f| fs::File::open(&f).ok())
-            .and_then(|f| {
-                Some({
-                    let mut rsp = Response::new(StatusCode::OK)
-                        .with_content_type(Self::guess_content_type(path));
-                    if let Ok(stat) = f.metadata() {
-                        rsp.headers.set_content_length(stat.len())
-                    }
+            .and_then(|abspath| {
+                fs::File::open(&abspath)
+                    .with_context(|| format!("Not Found: {}", abspath))
+                    .and_then(|f| {
+                        match f.metadata() {
+                            Ok(stat) if stat.is_dir() => {
+                                // List directory contents
+                                self.serve_dir_list(&abspath, path)
+                            }
+                            Ok(stat) => Ok(Response::new(StatusCode::OK)
+                                .with_content_length(stat.len())
+                                .with_content_type(Self::guess_content_type(path))
+                                .with_body(Box::new(f))),
+                            Err(err) => Ok(Response::string(
+                                StatusCode::Forbidden,
+                                format!("Can't stat: {}", err),
+                            )),
+                        }
+                    })
+            })
+            .unwrap_or_else(|err| Response::string(StatusCode::NotFound, format!("{}", err)))
+    }
 
-                    rsp.with_body(Box::new(f))
-                })
-            })
-            .unwrap_or_else(|| {
-                Response::string(StatusCode::NotFound, format!("File {} not found", path))
-            })
+    fn serve_dir_list<'a>(&self, path: &str, public_path: &str) -> Result<Response<'a>> {
+        let index_file = Path::new(path).join(INDEX_FILE);
+        if index_file.exists() {
+            return Ok(self.serve_file(format!("{public_path}/{INDEX_FILE}").as_str()));
+        }
+
+        let mut buff = Vec::from("<html><body>");
+        write!(buff, "<h1>Index of {public_path}</h1><div><ul>")?;
+        fs::read_dir(path)?.filter_map(|e| e.ok()).for_each(|s| {
+            if let Ok(name) = s.file_name().into_string() {
+                let _ = write!(
+                    buff,
+                    "\n<li><a href=\"{public_path}/{name}\">{name}</a></li>"
+                );
+            }
+        });
+
+        buff.extend_from_slice(b"\n</ul></div></body></html>");
+        Ok(Response::new(StatusCode::OK)
+            .with_content_length(buff.len() as u64)
+            .with_content_type("text/html".to_string())
+            .with_body(Box::new(Cursor::new(buff))))
     }
 }
 
-unsafe impl Send for EchoHandler {}
-unsafe impl Sync for EchoHandler {}
+unsafe impl Send for StaticHandler {}
+unsafe impl Sync for StaticHandler {}
 
-impl Handler for EchoHandler {
+impl Handler for StaticHandler {
     fn handle_request<'a, 'b>(&self, req: Request<'a>) -> Response<'b> {
         match req.method {
             Method::GET => match req.path() {
-                "/" => self.serve_file("index.html"),
+                "/" => self.serve_file(INDEX_FILE),
                 path => self.serve_file(path),
             },
             Method::POST => dump_request(req)
