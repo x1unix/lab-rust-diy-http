@@ -1,29 +1,34 @@
 use super::ParseError;
 use crate::http::{Request, Response};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::thread;
 
-pub trait Handler {
-    fn handle_request<'a, 'b>(&mut self, req: Request<'a>) -> Response<'b>;
-    fn handle_bad_request(&mut self, err: &ParseError) -> Response;
+pub trait Handler: Send + Sync {
+    fn handle_request<'a, 'b>(&self, req: Request<'a>) -> Response<'b>;
+    fn handle_bad_request(&self, err: &ParseError) -> Response;
 }
 
 pub struct Server<'a> {
     address: String,
-    handler: &'a mut dyn Handler,
+    handler: &'a dyn Handler,
 }
 
 impl<'a> Server<'a> {
-    pub fn new(address: String, handler: &'a mut dyn Handler) -> Self {
+    pub fn new(address: String, handler: &'a dyn Handler) -> Self {
         Self { address, handler }
     }
 
-    pub fn start(&mut self) {
+    pub fn start(&'a self) {
         let listener = TcpListener::bind(&self.address).unwrap();
         println!("Server is running on {}", self.address);
         loop {
             match listener.accept() {
                 Ok((stream, addr)) => {
-                    self.handle_request(stream, addr);
+                    thread::scope(|scope| {
+                        scope.spawn(move || {
+                            self.handle_request(stream, addr);
+                        });
+                    });
                 }
                 Err(err) => {
                     println!("TCP accept failed: {err}");
@@ -34,7 +39,7 @@ impl<'a> Server<'a> {
         }
     }
 
-    fn handle_request(&mut self, mut stream: TcpStream, addr: SocketAddr) {
+    fn handle_request(&self, mut stream: TcpStream, addr: SocketAddr) {
         let mut rsp = match Request::from_reader(&mut stream) {
             Ok(req) => {
                 Self::log_request(&req, &addr);

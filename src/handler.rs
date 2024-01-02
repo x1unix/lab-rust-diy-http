@@ -61,8 +61,11 @@ impl EchoHandler {
     }
 }
 
+unsafe impl Send for EchoHandler {}
+unsafe impl Sync for EchoHandler {}
+
 impl Handler for EchoHandler {
-    fn handle_request<'a, 'b>(&mut self, req: Request<'a>) -> Response<'b> {
+    fn handle_request<'a, 'b>(&self, req: Request<'a>) -> Response<'b> {
         match req.method {
             Method::GET => match req.path() {
                 "/" => self.serve_file("index.html"),
@@ -77,7 +80,7 @@ impl Handler for EchoHandler {
         }
     }
 
-    fn handle_bad_request(&mut self, err: &ParseError) -> Response {
+    fn handle_bad_request(&self, err: &ParseError) -> Response {
         Response::error(StatusCode::BadRequest, err)
     }
 }
