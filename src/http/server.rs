@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 
 pub trait Handler {
-    fn handle_request<'a>(&mut self, req: Request<'a>) -> Response<'a>;
+    fn handle_request<'a, 'b>(&mut self, req: Request<'a>) -> Response<'b>;
     fn handle_bad_request(&mut self, err: &ParseError) -> Response;
 }
 
@@ -30,7 +30,17 @@ impl Server {
 
     fn accept_request(&self, listener: &mut TcpListener, handler: &mut impl Handler) -> Result<()> {
         let (mut stream, addr) = listener.accept().with_context(|| "TCP accept failed")?;
-        let mut rsp = Self::do_req(&mut stream, &addr, handler);
+
+        let mut rsp = match Request::from_reader(&mut stream) {
+            Ok(req) => {
+                Self::log_request(&req, &addr);
+                handler.handle_request(req)
+            }
+            Err(err) => {
+                println!("{addr}: can't parse request - {err}");
+                handler.handle_bad_request(&err)
+            }
+        };
 
         println!("{}", rsp.status_code);
         rsp.send(&mut stream)

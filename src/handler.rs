@@ -1,6 +1,11 @@
+use anyhow::Context;
+
 use crate::http::{Handler, HeaderNames, Method, ParseError, Request, Response, StatusCode};
 use std::fs;
+use std::io::{Cursor, Read};
 use std::path::Path;
+
+const MAX_REQUEST_SIZE: u64 = 1024 * 1024 * 10;
 
 pub struct EchoHandler {
     static_dir: String,
@@ -36,7 +41,7 @@ impl EchoHandler {
             .unwrap_or_else(|| String::from("application/otcet-stream"))
     }
 
-    fn serve_file<'a>(&self, path: &'a str) -> Response<'a> {
+    fn serve_file<'a>(&self, path: &str) -> Response<'a> {
         self.normalize_path(path)
             .and_then(|f| fs::File::open(&f).ok())
             .and_then(|f| {
@@ -57,17 +62,14 @@ impl EchoHandler {
 }
 
 impl Handler for EchoHandler {
-    fn handle_request<'a>(&mut self, req: Request<'a>) -> Response<'a> {
+    fn handle_request<'a, 'b>(&mut self, req: Request<'a>) -> Response<'b> {
         match req.method {
             Method::GET => match req.path() {
                 "/" => self.serve_file("index.html"),
                 path => self.serve_file(path),
             },
-            Method::POST => {
-                // TODO: use streams instead of strings in Response.
-                dump_request(req)
-                    .unwrap_or_else(|e| Response::string(StatusCode::BadRequest, format!("{}", e)))
-            }
+            Method::POST => dump_request(req)
+                .unwrap_or_else(|e| Response::string(StatusCode::BadRequest, format!("{}", e))),
             _ => Response::string(
                 StatusCode::BadRequest,
                 "Unsupported HTTP method".to_string(),
@@ -80,21 +82,37 @@ impl Handler for EchoHandler {
     }
 }
 
-fn dump_request(req: Request) -> anyhow::Result<Response> {
-    let req = Box::new(req);
-    let length = req
-        .headers
-        .content_length()
-        .ok_or(anyhow::anyhow!("Missing content length"))?;
+fn dump_request<'a, 'b>(mut req: Request<'a>) -> anyhow::Result<Response<'b>> {
+    let len = match req.headers.content_length() {
+        Some(len) if len > MAX_REQUEST_SIZE => {
+            return Ok(Response::string(
+                StatusCode::PayloadTooLarge,
+                "Request entity too large".to_owned(),
+            ))
+        }
+        Some(len) => len,
+        None => {
+            return Ok(Response::string(
+                StatusCode::BadRequest,
+                "missing content length".to_owned(),
+            ))
+        }
+    };
+
+    // Right now I can't pass the body itself as a body
+    // because this will cause 2 simultaneous mutable borrows (read + write).
+    let mut body = Vec::with_capacity(len as usize);
+    req.read_to_end(&mut body)
+        .with_context(|| "Failed to read request body")?;
+    let cur = Box::new(Cursor::new(body));
 
     let content_type = req
         .headers
         .get(HeaderNames::ContentType.as_ref())
         .unwrap_or("application/otcet-stream");
 
-    // Keep this mess until Response gets Read support
     Ok(Response::new(StatusCode::OK)
         .with_content_type(content_type.to_owned())
-        .with_content_length(length)
-        .with_body(req))
+        .with_content_length(len)
+        .with_body(cur))
 }
