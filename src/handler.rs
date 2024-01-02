@@ -35,7 +35,7 @@ impl StaticHandler {
             .and_then(|ext| ext.to_str())
             .and_then(|ext| match ext {
                 "jpg" | "jpeg" | "png" | "gif" | "webp" => Some(format!("image/{ext}")),
-                "html" | "txt" | "css" => Some(format!("text/{ext}")),
+                "html" | "txt" | "css" => Some(format!("text/{ext}; charset=utf-8")),
                 "wasm" | "js" | "pdf" => Some(format!("application/{ext}")),
                 _ => None,
             })
