@@ -1,6 +1,5 @@
 use super::ParseError;
 use crate::http::{Request, Response};
-use anyhow::{Context, Result};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 
 pub trait Handler {
@@ -8,43 +7,49 @@ pub trait Handler {
     fn handle_bad_request(&mut self, err: &ParseError) -> Response;
 }
 
-pub struct Server {
+pub struct Server<'a> {
     address: String,
+    handler: &'a mut dyn Handler,
 }
 
-impl Server {
-    pub fn new(address: String) -> Self {
-        Self { address }
+impl<'a> Server<'a> {
+    pub fn new(address: String, handler: &'a mut dyn Handler) -> Self {
+        Self { address, handler }
     }
 
-    pub fn start(&self, handler: &mut impl Handler) {
-        let mut listener = TcpListener::bind(&self.address).unwrap();
+    pub fn start(&mut self) {
+        let listener = TcpListener::bind(&self.address).unwrap();
         println!("Server is running on {}", self.address);
         loop {
-            if let Err(err) = self.accept_request(&mut listener, handler) {
-                println!("Error: {err}");
-                dbg!(err);
+            match listener.accept() {
+                Ok((stream, addr)) => {
+                    self.handle_request(stream, addr);
+                }
+                Err(err) => {
+                    println!("TCP accept failed: {err}");
+                    dbg!(err);
+                    return;
+                }
             }
         }
     }
 
-    fn accept_request(&self, listener: &mut TcpListener, handler: &mut impl Handler) -> Result<()> {
-        let (mut stream, addr) = listener.accept().with_context(|| "TCP accept failed")?;
-
+    fn handle_request(&mut self, mut stream: TcpStream, addr: SocketAddr) {
         let mut rsp = match Request::from_reader(&mut stream) {
             Ok(req) => {
                 Self::log_request(&req, &addr);
-                handler.handle_request(req)
+                self.handler.handle_request(req)
             }
             Err(err) => {
                 println!("{addr}: can't parse request - {err}");
-                handler.handle_bad_request(&err)
+                self.handler.handle_bad_request(&err)
             }
         };
 
         println!("{}", rsp.status_code);
-        rsp.send(&mut stream)
-            .with_context(|| format!("{addr}: failed to send response"))
+        if let Err(err) = rsp.send(&mut stream) {
+            println!("{addr}: failed to send response - {err}")
+        }
     }
 
     fn log_request(req: &Request, addr: &SocketAddr) {

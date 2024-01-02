@@ -13,6 +13,6 @@ fn main() {
 
     println!("Serving files from {}", static_path);
     let mut handler = handler::EchoHandler::new(static_path);
-    let srv = Server::new("127.0.0.1:8080".to_string());
-    srv.start(&mut handler);
+    let mut srv = Server::new("127.0.0.1:8080".to_string(), &mut handler);
+    srv.start();
 }
